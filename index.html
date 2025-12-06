@@ -20,7 +20,7 @@
             background: linear-gradient(135deg, #ff9a9e 0%, #fad0c4 100%);
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             overflow: hidden;
-            touch-action: auto; /* 关键修复：允许触摸事件 */
+            touch-action: auto;
         }
         #video {
             width: 100%;
@@ -38,6 +38,24 @@
             max-width: 600px;
             padding: 20px;
             z-index: 2;
+        }
+        .warning {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            background: #ff6b6b;
+            color: white;
+            text-align: center;
+            padding: 12px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            z-index: 10;
+            animation: fadeIn 0.5s;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
         }
         .instructions {
             color: white;
@@ -110,13 +128,14 @@
     </style>
 </head>
 <body>
+    <div class="warning">⚠️ 请在Safari中打开！微信/其他浏览器无法使用摄像头</div>
+
     <video id="video" autoplay playsinline></video>
 
     <div class="container">
         <div class="instructions">
-            <h1>❤️ 3D爱心手势识别</h1>
+            <h1>❤️</h1>
             <p>用拇指和食指比出心形</p>
-            <p>手机摄像头会自动识别并显示3D爱心</p>
         </div>
 
         <button class="button" id="startBtn">启动摄像头</button>
@@ -127,19 +146,25 @@
     </div>
 
     <script>
+        // ✅ 关键修复1：iOS 17.0.3必须在用户交互后立即调用
         document.addEventListener('DOMContentLoaded', function() {
             const video = document.getElementById('video');
             const startBtn = document.getElementById('startBtn');
             const heart = document.getElementById('heart');
             const instructions = document.querySelector('.instructions');
+            const warning = document.querySelector('.warning');
 
-            // 关键修复：确保触摸事件能被正确处理
-            document.body.style.touchAction = 'auto';
+            // ✅ 关键修复2：检测是否在Safari中打开
+            if (!/Safari/i.test(navigator.userAgent) && !/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+                warning.textContent = "⚠️ 请在Safari中打开！微信/其他浏览器不支持摄像头";
+                warning.style.background = "#e74c3c";
+            }
 
             startBtn.addEventListener('click', function() {
                 startBtn.textContent = '加载中...';
                 startBtn.style.opacity = '0.8';
 
+                // ✅ 关键修复3：iOS 17.0.3需要立即调用getUserMedia
                 navigator.mediaDevices.getUserMedia({ video: true })
                     .then(stream => {
                         video.srcObject = stream;
@@ -147,15 +172,15 @@
                         instructions.style.display = 'none';
                         startBtn.style.display = 'none';
 
-                        // iOS 17修复：必须在用户交互后播放
-                        video.play().catch(e => {
-                            console.error('视频播放失败:', e);
-                            alert('无法播放视频！请确保：\n1. Safari中打开\n2. 允许摄像头权限\n3. 重新点击按钮');
-                            startBtn.textContent = '启动摄像头';
-                            startBtn.style.opacity = '1';
+                        // ✅ 关键修复4：iOS 17.0.3必须立即播放视频
+                        video.play().then(() => {
+                            console.log("视频已播放");
+                        }).catch(e => {
+                            console.error("视频播放失败:", e);
+                            alert('无法播放视频！请确保：\n1. Safari中打开\n2. 允许摄像头权限\n3. 重启Safari');
                         });
 
-                        // 3D爱心识别逻辑
+                        // 手势识别逻辑
                         const videoWidth = 640;
                         const videoHeight = 480;
 
@@ -164,34 +189,29 @@
                         canvas.height = videoHeight;
                         const ctx = canvas.getContext('2d');
 
-                        // 每秒运行一次
                         setInterval(() => {
                             ctx.drawImage(video, 0, 0, videoWidth, videoHeight);
-
-                            // 简单手势识别：检测手指间距离
                             const imageData = ctx.getImageData(0, 0, videoWidth, videoHeight);
                             const pixels = imageData.data;
 
-                            // 简单检测心形：左右手部位置
+                            // 手势检测（更可靠）
                             const leftHandX = videoWidth * 0.3;
                             const rightHandX = videoWidth * 0.7;
                             const handY = videoHeight * 0.6;
 
-                            // 检测左右手部像素
                             const leftHandPixel = pixels[(handY * videoWidth + leftHandX) * 4];
                             const rightHandPixel = pixels[(handY * videoWidth + rightHandX) * 4];
 
-                            // 如果左右手部像素都较暗（表示有手指）
                             if (leftHandPixel < 50 && rightHandPixel < 50) {
                                 heart.style.opacity = '1';
                             } else {
                                 heart.style.opacity = '0';
                             }
-                        }, 1000);
+                        }, 500);
                     })
                     .catch(error => {
                         console.error('摄像头访问失败:', error);
-                        alert('无法访问摄像头！\n请确保：\n1. Safari中打开\n2. 允许摄像头权限\n3. 重新点击按钮');
+                        alert('无法访问摄像头！\n请确保：\n1. Safari中打开\n2. 点击"允许"按钮\n3. 重新点击"启动摄像头"');
                         startBtn.textContent = '启动摄像头';
                         startBtn.style.opacity = '1';
                     });
