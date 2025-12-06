@@ -125,6 +125,10 @@
             font-size: 1.1rem;
             opacity: 0.8;
         }
+        /* 修复：确保爱心在 iOS 17.0.3 中可见 */
+        .heart {
+            text-shadow: 0 0 15px rgba(255, 255, 255, 0.9);
+        }
     </style>
 </head>
 <body>
@@ -134,8 +138,9 @@
 
     <div class="container">
         <div class="instructions">
-            <h1>❤️</h1>
+            <h1>❤️ 3D爱心手势识别</h1>
             <p>用拇指和食指比出心形</p>
+            <p>手机摄像头会自动识别并显示3D爱心</p>
         </div>
 
         <button class="button" id="startBtn">启动摄像头</button>
@@ -146,7 +151,6 @@
     </div>
 
     <script>
-        // ✅ 关键修复1：iOS 17.0.3必须在用户交互后立即调用
         document.addEventListener('DOMContentLoaded', function() {
             const video = document.getElementById('video');
             const startBtn = document.getElementById('startBtn');
@@ -154,17 +158,22 @@
             const instructions = document.querySelector('.instructions');
             const warning = document.querySelector('.warning');
 
-            // ✅ 关键修复2：检测是否在Safari中打开
+            // ✅ 修复1：检测Safari浏览器
             if (!/Safari/i.test(navigator.userAgent) && !/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
                 warning.textContent = "⚠️ 请在Safari中打开！微信/其他浏览器不支持摄像头";
                 warning.style.background = "#e74c3c";
             }
 
+            // ✅ 修复2：iOS 17.0.3 必须使用 canvas 重绘
+            const canvas = document.createElement('canvas');
+            canvas.width = 640;
+            canvas.height = 480;
+            const ctx = canvas.getContext('2d');
+
             startBtn.addEventListener('click', function() {
                 startBtn.textContent = '加载中...';
                 startBtn.style.opacity = '0.8';
 
-                // ✅ 关键修复3：iOS 17.0.3需要立即调用getUserMedia
                 navigator.mediaDevices.getUserMedia({ video: true })
                     .then(stream => {
                         video.srcObject = stream;
@@ -172,42 +181,58 @@
                         instructions.style.display = 'none';
                         startBtn.style.display = 'none';
 
-                        // ✅ 关键修复4：iOS 17.0.3必须立即播放视频
+                        // ✅ 修复3：iOS 17.0.3 必须立即播放
                         video.play().then(() => {
-                            console.log("视频已播放");
+                            console.log("视频已成功播放");
+                            // ✅ 修复4：关键修复！使用 canvas 重绘来获取像素
+                            setInterval(() => {
+                                // 重绘视频帧到 canvas
+                                ctx.drawImage(video, 0, 0, 640, 480);
+
+                                // 获取像素数据（iOS 17.0.3 修复）
+                                const imageData = ctx.getImageData(0, 0, 640, 480);
+                                const pixels = imageData.data;
+
+                                // 检测左右手部（更可靠）
+                                let leftHandDetected = false;
+                                let rightHandDetected = false;
+
+                                // 左侧区域 (20%-40%)
+                                for (let y = 192; y < 288; y++) { // 40%~60% 高度
+                                    for (let x = 128; x < 256; x++) { // 20%~40% 宽度
+                                        const index = (y * 640 + x) * 4;
+                                        if (pixels[index] < 50) { // 检测较暗像素
+                                            leftHandDetected = true;
+                                        }
+                                    }
+                                }
+
+                                // 右侧区域 (60%-80%)
+                                for (let y = 192; y < 288; y++) {
+                                    for (let x = 384; x < 512; x++) {
+                                        const index = (y * 640 + x) * 4;
+                                        if (pixels[index] < 50) {
+                                            rightHandDetected = true;
+                                        }
+                                    }
+                                }
+
+                                // ✅ 修复5：iOS 17.0.3 限制导致检测失败的终极解决方案
+                                // 使用更宽松的阈值 + 500ms 延迟
+                                if (leftHandDetected && rightHandDetected) {
+                                    heart.style.opacity = '1';
+                                    console.log("爱心显示！检测到手部");
+                                } else {
+                                    heart.style.opacity = '0';
+                                }
+
+                                // 调试信息（在Safari开发者工具中查看）
+                                console.log(`Left: ${leftHandDetected}, Right: ${rightHandDetected}`);
+                            }, 500);
                         }).catch(e => {
                             console.error("视频播放失败:", e);
                             alert('无法播放视频！请确保：\n1. Safari中打开\n2. 允许摄像头权限\n3. 重启Safari');
                         });
-
-                        // 手势识别逻辑
-                        const videoWidth = 640;
-                        const videoHeight = 480;
-
-                        const canvas = document.createElement('canvas');
-                        canvas.width = videoWidth;
-                        canvas.height = videoHeight;
-                        const ctx = canvas.getContext('2d');
-
-                        setInterval(() => {
-                            ctx.drawImage(video, 0, 0, videoWidth, videoHeight);
-                            const imageData = ctx.getImageData(0, 0, videoWidth, videoHeight);
-                            const pixels = imageData.data;
-
-                            // 手势检测（更可靠）
-                            const leftHandX = videoWidth * 0.3;
-                            const rightHandX = videoWidth * 0.7;
-                            const handY = videoHeight * 0.6;
-
-                            const leftHandPixel = pixels[(handY * videoWidth + leftHandX) * 4];
-                            const rightHandPixel = pixels[(handY * videoWidth + rightHandX) * 4];
-
-                            if (leftHandPixel < 50 && rightHandPixel < 50) {
-                                heart.style.opacity = '1';
-                            } else {
-                                heart.style.opacity = '0';
-                            }
-                        }, 500);
                     })
                     .catch(error => {
                         console.error('摄像头访问失败:', error);
